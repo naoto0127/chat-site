@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ふわっとチャット</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; font-family:-apple-system,"Hiragino Sans","Yu Gothic UI",Meiryo,sans-serif; }
+  body { background:#f2f2f7; min-height:100vh; display:flex; justify-content:center; align-items:center; }
+  .app { width:100%; max-width:520px; height:92vh; background:#fff; border-radius:20px; overflow:hidden;
+         display:flex; flex-direction:column; box-shadow:0 20px 60px rgba(0,0,0,.15); }
+  .screen { flex:1; display:none; flex-direction:column; }
+  .screen.active { display:flex; }
+  /* 参加画面 */
+  #joinScreen { justify-content:center; align-items:center; gap:14px; padding:30px; }
+  #joinScreen h1 { font-size:26px; } #joinScreen p { color:#8e8e93; font-size:13px; text-align:center; line-height:1.7; }
+  #joinScreen input { width:100%; padding:14px 16px; border:1px solid #d1d1d6; border-radius:14px; font-size:16px; outline:none; }
+  #joinScreen input:focus { border-color:#0b93f6; }
+  #joinScreen button { width:100%; padding:14px; border:none; background:#0b93f6; color:#fff; border-radius:14px;
+                       font-size:16px; font-weight:700; cursor:pointer; }
+  #joinScreen button:hover { background:#0a84e8; }
+  /* チャット画面 */
+  .chat-header { padding:14px 16px; border-bottom:1px solid #e5e5ea; display:flex; align-items:center; gap:10px; }
+  .room-name { font-weight:700; font-size:16px; flex:1; }
+  .conn { font-size:11px; color:#30d158; }
+  #messages { flex:1; overflow-y:auto; padding:16px; background:#f7f7f9; display:flex; flex-direction:column; gap:6px; }
+  .msg-row { display:flex; align-items:flex-end; gap:6px; }
+  .msg-row.me { justify-content:flex-end; }
+  .bubble { max-width:70%; padding:10px 14px; border-radius:18px; font-size:15px; line-height:1.45;
+            word-break:break-word; white-space:pre-wrap; }
+  .msg-row.them .bubble { background:#e9e9eb; border-bottom-left-radius:4px; }
+  .msg-row.me .bubble { background:#0b93f6; color:#fff; border-bottom-right-radius:4px; }
+  .sender { font-size:11px; color:#8e8e93; margin:0 4px 2px; }
+  .msg-time { font-size:10px; color:#8e8e93; }
+  .input-area { display:flex; gap:10px; padding:12px; border-top:1px solid #e5e5ea; }
+  .input-area input { flex:1; padding:12px 16px; border:1px solid #d1d1d6; border-radius:20px; font-size:15px; outline:none; }
+  .input-area button { border:none; background:#0b93f6; color:#fff; border-radius:20px; padding:0 20px; font-weight:600; cursor:pointer; }
+  .sys { text-align:center; font-size:12px; color:#8e8e93; margin:6px 0; }
+  @media (max-width:560px){ .app { border-radius:0; height:100vh; max-width:100%; } }
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- 参加画面 -->
+  <div class="screen active" id="joinScreen">
+    <h1>💬 ふわっとチャット</h1>
+    <p>おなじ<b>ルーム名(合言葉)</b>を入れれば、<br>どの端末でも同じトークに参加できます</p>
+    <input id="userName" placeholder="あなたの名前(例: さくら)" maxlength="12">
+    <input id="roomCode" placeholder="ルーム名(例: きのうのパーティー)" maxlength="30">
+    <button onclick="join()">チャットに参加 →</button>
+  </div>
+  <!-- チャット画面 -->
+  <div class="screen" id="chatScreen">
+    <div class="chat-header">
+      <span class="room-name" id="roomLabel"></span>
+      <span class="conn" id="connLabel">接続中…</span>
+    </div>
+    <div id="messages"></div>
+    <div class="input-area">
+      <input id="msgInput" placeholder="メッセージを入力…" onkeydown="if(event.key==='Enter')send()">
+      <button onclick="send()">送信</button>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+// ============================================================
+// 【ここを書き換えてね】Firebaseの設定を自分のものに差し替える
+// Firebaseコンソール → プロジェクト設定 → 「ウェブアプリ」→
+// 「Firebase SDK の設定」に書いてある内容をコピー&ペースト
+// ============================================================
+const firebaseConfig = {
+  apiKey: "AIzaSyDCkJxFOV1xPASeRkMUKSlRUbVR0EMdtg4",
+  authDomain: "team-49-739c8.firebaseapp.com",
+  databaseURL: "https://team-49-739c8-default-rtdb.firebaseio.com",
+  projectId: "team-49-739c8",
+  storageBucket: "team-49-739c8.firebasestorage.app",
+  messagingSenderId: "623257125970",
+  appId: "1:623257125970:web:47d860d671493e18744b8b"
+};
+
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getDatabase, ref, push, onValue, set, serverTimestamp }
+  from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+
+const app = initializeApp(firebaseConfig);
+const db  = getDatabase(app);
+
+let userName = "", roomId = "", lastKey = "";
+const COLORS = ['#ff9500','#30d158','#af52de','#ff2d55','#5ac8fa','#ffcc00','#007aff'];
+const colorOf = name => COLORS[[...name].reduce((a,c)=>a+c.charCodeAt(0),0) % COLORS.length];
+const esc = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+const fmt = t => { const d = new Date(t); return d.getHours()+':'+String(d.getMinutes()).padStart(2,'0'); };
+
+window.join = function(){
+  userName = document.getElementById('userName').value.trim();
+  roomId   = document.getElementById('roomCode').value.trim();
+  if (!userName || !roomId) { alert('名前とルーム名を入力してね'); return; }
+  document.getElementById('joinScreen').classList.remove('active');
+  document.getElementById('chatScreen').classList.add('active');
+  document.getElementById('roomLabel').textContent = '📍 ' + roomId;
+
+  const roomRef = ref(db, 'rooms/' + roomId + '/messages');
+  onValue(roomRef, snap => {
+    const val = snap.val();
+    document.getElementById('connLabel').textContent = '● 接続中';
+    document.getElementById('connLabel').style.color = '#30d158';
+    if (!val) return;
+    const box = document.getElementById('messages');
+    Object.entries(val).forEach(([k, m]) => {
+      if (k <= lastKey) return;
+      lastKey = k;
+      const row = document.createElement('div');
+      row.className = 'msg-row ' + (m.name === userName ? 'me' : 'them');
+      const time = m.ts ? fmt(m.ts) : '';
+      if (m.name !== userName) {
+        row.innerHTML = `<div class="sender" style="color:${colorOf(m.name)}">● ${esc(m.name)}</div>` +
+          `<div class="bubble">${esc(m.text)}</div><div class="msg-time">${time}</div>`;
+      } else {
+        row.innerHTML = `<div class="msg-time">${time}</div><div class="bubble">${esc(m.text)}</div>`;
+      }
+      box.appendChild(row);
+      box.scrollTop = box.scrollHeight;
+    });
+  });
+  push(roomRef, { name: '', text: '__join__', ts: serverTimestamp() }); // 接続テスト
+  document.getElementById('msgInput').focus();
+};
+
+window.send = function(){
+  const input = document.getElementById('msgInput');
+  const text = input.value.trim();
+  if (!text) return;
+  input.value = '';
+  push(ref(db, 'rooms/' + roomId + '/messages'), { name: userName, text, ts: serverTimestamp() });
+};
+</script>
+</body>
+</html>
