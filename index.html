@@ -80,7 +80,7 @@ const firebaseConfig = {
 };
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-import { getDatabase, ref, push, onValue, set, serverTimestamp }
+import { getDatabase, ref, push, onValue, set, get, onDisconnect, serverTimestamp }
   from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
 
 const app = initializeApp(firebaseConfig);
@@ -92,7 +92,7 @@ const colorOf = name => COLORS[[...name].reduce((a,c)=>a+c.charCodeAt(0),0) % CO
 const esc = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 const fmt = t => { const d = new Date(t); return d.getHours()+':'+String(d.getMinutes()).padStart(2,'0'); };
 
-window.join = function(){
+window.join = async function(){
   userName = document.getElementById('userName').value.trim();
   roomId   = document.getElementById('roomCode').value.trim();
   if (!userName || !roomId) { alert('名前とルーム名を入力してね'); return; }
@@ -100,7 +100,24 @@ window.join = function(){
   document.getElementById('chatScreen').classList.add('active');
   document.getElementById('roomLabel').textContent = '📍 ' + roomId;
 
-  const roomRef = ref(db, 'rooms/' + roomId + '/messages');
+  const base = 'rooms/' + roomId;
+  try {
+    // ★全員抜けてたら履歴をリセット
+    const presenceSnap = await get(ref(db, base + '/presence'));
+    if (!presenceSnap.exists()) {
+      await set(ref(db, base + '/messages'), null);
+    }
+    // 自分の在室マーク(接続が切れたら自動で消える)
+    const myRef = push(ref(db, base + '/presence'));
+    await set(myRef, true);
+    onDisconnect(myRef).remove();
+  } catch (e) {
+    document.getElementById('connLabel').textContent = '⚠ 接続エラー(Real-time Databaseのルールを確認してね)';
+    document.getElementById('connLabel').style.color = '#ff3b30';
+    return;
+  }
+
+  const roomRef = ref(db, base + '/messages');
   onValue(roomRef, snap => {
     const val = snap.val();
     document.getElementById('connLabel').textContent = '● 接続中';
@@ -110,6 +127,7 @@ window.join = function(){
     Object.entries(val).forEach(([k, m]) => {
       if (k <= lastKey) return;
       lastKey = k;
+      if (!m.name) return; // システム用メッセージは表示しない
       const row = document.createElement('div');
       row.className = 'msg-row ' + (m.name === userName ? 'me' : 'them');
       const time = m.ts ? fmt(m.ts) : '';
