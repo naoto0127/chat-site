@@ -60,10 +60,18 @@
   <div class="screen active" id="joinScreen">
     <div id="authBox"><button onclick="login()">🔑 Googleでログイン</button></div>
     <h1>💬 ふわっとチャット</h1>
-    <p>おなじ<b>ルーム名(合言葉)</b>を入れれば、<br>どの端末でも同じトークに参加できます<br><span style="font-size:11px">※ログインするとフレンド機能が使えます (v3)</span></p>
+    <p>おなじ<b>ルーム名(合言葉)</b>を入れれば、<br>どの端末でも同じトークに参加できます<br><span style="font-size:11px">※ログインするとフレンド機能が使えます (v5)</span></p>
     <div id="friendPanel" style="display:none">
       <h3>フレンド</h3><div id="fList"><div class="empty">まだフレンドがいません</div></div>
       <h3>届いた申請</h3><div id="rList"></div>
+      <h3>グループ</h3><div id="groupList"><div class="empty">まだグループがありません</div></div>
+      <button class="mini-btn" style="margin-top:4px" onclick="toggleGroupForm()">＋ グループを作る</button>
+      <div id="groupForm" style="display:none; margin-top:6px;">
+        <input id="groupName" placeholder="グループ名(例: 部活の仲間)" maxlength="20" style="width:100%; padding:8px 10px; border:1px solid #d1d1d6; border-radius:10px; font-size:13px; outline:none;">
+        <div id="groupFriendPick" style="margin:6px 0;"></div>
+        <button class="mini-btn green" onclick="createGroup()">作成</button>
+      </div>
+      <div id="inviteBox" style="margin-top:6px;"></div>
       <h3>友だちを名前で探す</h3>
       <div id="searchRow"><input id="searchName" placeholder="アカウント名(例: naoto)" onkeydown="if(event.key==='Enter')searchUsers()"><button class="mini-btn" onclick="searchUsers()">検索</button></div>
       <div id="searchResult"></div>
@@ -109,6 +117,7 @@ const auth = getAuth(app);
 const provider = new GoogleAuthProvider();
 
 let userName = "", roomId = "", lastKey = "", currentUid = null;
+let myFriends = {}, myGroups = {}, currentInviteGid = null;
 const COLORS = ['#ff9500','#30d158','#af52de','#ff2d55','#5ac8fa','#ffcc00','#007aff'];
 const colorOf = name => COLORS[[...name].reduce((a,c)=>a+c.charCodeAt(0),0) % COLORS.length];
 const esc = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
@@ -142,6 +151,7 @@ onAuthStateChanged(auth, async user => {
     document.getElementById('userName').value = user.displayName || '';
     onValue(ref(db,'friends/'+user.uid), s => renderFriends(s.val()));
     onValue(ref(db,'friendReqs/'+user.uid), s => renderReqs(s.val()));
+    onValue(ref(db,'userGroups/'+user.uid), s => renderGroups(s.val()));
   } else {
     currentUid = null;
     box.innerHTML = '<button onclick="login()">🔑 Googleでログイン</button>';
@@ -151,6 +161,7 @@ onAuthStateChanged(auth, async user => {
 
 /* ===== フレンド機能 ===== */
 function renderFriends(val){
+  myFriends = val || {};
   const el = document.getElementById('fList');
   if (!val) { el.innerHTML = '<div class="empty">まだフレンドがいません</div>'; return; }
   el.innerHTML = Object.entries(val).map(([uid,f]) =>
@@ -196,6 +207,89 @@ window.declineReq = async function(fromUid){
 window.talkFriend = function(room, fname){
   document.getElementById('roomCode').value = room;
   document.getElementById('userName').value = auth.currentUser.displayName || '';
+  join();
+};
+
+/* ===== グループ機能 ===== */
+function renderGroups(val){
+  myGroups = val || {};
+  const el = document.getElementById('groupList');
+  const ids = Object.keys(myGroups);
+  if (!ids.length) { el.innerHTML = '<div class="empty">まだグループがありません</div>'; return; }
+  el.innerHTML = ids.map(gid => { const g = myGroups[gid];
+    const canDelete = !g.owner || g.owner === currentUid;
+    const subBtn = canDelete
+      ? `<button class="mini-btn gray" onclick="deleteGroup('${gid}')">削除</button>`
+      : `<button class="mini-btn gray" onclick="leaveGroup('${gid}')">退出</button>`;
+    return `<div class="friend-item"><span class="fname">👥 ${esc(g.name)}</span>` +
+      `<button class="mini-btn gray" onclick="showInvite('${gid}')">招待</button>` + subBtn +
+      `<button class="mini-btn" onclick="talkGroup('${escJs(g.room)}')">トーク</button></div>`;
+  }).join('');
+}
+window.toggleGroupForm = function(){
+  const f = document.getElementById('groupForm');
+  if (f.style.display === 'none') {
+    const ids = Object.keys(myFriends);
+    document.getElementById('groupFriendPick').innerHTML = ids.length ? ids.map(uid =>
+      `<label class="friend-item"><input type="checkbox" class="gcheck" data-uid="${uid}"> ${esc(myFriends[uid].name)}</label>`
+    ).join('') : '<div class="empty">フレンドがいません(先にフレンドを追加してね)</div>';
+    f.style.display = 'block';
+  } else { f.style.display = 'none'; }
+};
+window.createGroup = async function(){
+  const name = document.getElementById('groupName').value.trim();
+  if (!name) { alert('グループ名を入力してね'); return; }
+  const me = auth.currentUser;
+  const gid = 'g' + Date.now();
+  const room = 'room_' + gid;
+  const members = { [me.uid]: me.displayName || 'ななし' };
+  const picked = [...document.querySelectorAll('.gcheck:checked')].map(cb => cb.dataset.uid);
+  for (const uid of picked) members[uid] = myFriends[uid].name;
+  await set(ref(db,'groups/'+gid), { name, room, members, owner: me.uid });
+  for (const uid of Object.keys(members)) {
+    await set(ref(db,'userGroups/'+uid+'/'+gid), { name, room });
+  }
+  document.getElementById('groupName').value = '';
+  document.getElementById('groupForm').style.display = 'none';
+  alert('グループ「' + name + '」を作りました!');
+};
+window.showInvite = function(gid){
+  currentInviteGid = gid;
+  const g = myGroups[gid];
+  const notIn = Object.keys(myFriends).filter(uid => !g.members || !g.members[uid]);
+  document.getElementById('inviteBox').innerHTML = notIn.length ? notIn.map(uid =>
+    `<label class="friend-item"><input type="checkbox" class="icheck" data-uid="${uid}"> ${esc(myFriends[uid].name)}</label>`
+  ).join('') + '<div style="margin-top:4px"><button class="mini-btn green" onclick="doInvite()">招待する</button></div>'
+  : '<div class="empty">招待できるフレンドがいません</div>';
+};
+window.doInvite = async function(){
+  const gid = currentInviteGid, g = myGroups[gid];
+  const picked = [...document.querySelectorAll('.icheck:checked')].map(cb => cb.dataset.uid);
+  for (const uid of picked) {
+    await set(ref(db,'userGroups/'+uid+'/'+gid), { name: g.name, room: g.room });
+    await set(ref(db,'groups/'+gid+'/members/'+uid), myFriends[uid].name);
+  }
+  document.getElementById('inviteBox').innerHTML = '';
+  alert('招待しました!');
+};
+window.deleteGroup = async function(gid){
+  const g = myGroups[gid];
+  if (!confirm('グループ「' + g.name + '」を削除しますか?\n全員のグループ一覧から消えます。')) return;
+  const snap = await get(ref(db,'groups/'+gid+'/members'));
+  const members = snap.val() || {};
+  for (const uid of Object.keys(members)) {
+    await remove(ref(db,'userGroups/'+uid+'/'+gid));
+  }
+  await remove(ref(db,'groups/'+gid));
+};
+window.leaveGroup = async function(gid){
+  const g = myGroups[gid];
+  if (!confirm('グループ「' + g.name + '」から退出しますか?')) return;
+  await remove(ref(db,'userGroups/'+currentUid+'/'+gid));
+  await remove(ref(db,'groups/'+gid+'/members/'+currentUid));
+};
+window.talkGroup = function(room){
+  document.getElementById('roomCode').value = room;
   join();
 };
 
