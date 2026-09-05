@@ -118,7 +118,12 @@ const fmt = t => { const d = new Date(t); return d.getHours()+':'+String(d.getMi
 /* ===== ログイン / ゲスト ===== */
 window.login = () => { signInWithRedirect(auth, provider); };
 window.logout = () => { signOut(auth); };
-getRedirectResult(auth).catch(()=>{});
+getRedirectResult(auth).catch(e => {
+  const msg = { 'auth/unauthorized-domain': 'このサイトのドメインが未許可です(Firebaseの「承認済みドメイン」に naoto0127.github.io を追加してね)',
+                'auth/operation-not-allowed': 'Googleログインが無効です(Firebaseの「ログイン方法」でGoogleを有効にしてね)' };
+  document.getElementById('authBox').innerHTML = '⚠ ' + (msg[e.code] || e.code) +
+    ' <button onclick="login()">🔑 再ログイン</button>';
+});
 
 onAuthStateChanged(auth, async user => {
   const box = document.getElementById('authBox');
