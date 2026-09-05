@@ -60,11 +60,12 @@
   <div class="screen active" id="joinScreen">
     <div id="authBox"><button onclick="login()">🔑 Googleでログイン</button></div>
     <h1>💬 なおチャット</h1>
-    <p>おなじ<b>ルーム名(合言葉)</b>を入れれば、<br>どの端末でも同じトークに参加できます<br><span style="font-size:11px">※ログインするとフレンド機能が使えます (v7)</span></p>
+    <p>おなじ<b>ルーム名(合言葉)</b>を入れれば、<br>どの端末でも同じトークに参加できます<br><span style="font-size:11px">※ログインするとフレンド機能が使えます (v8)</span></p>
     <div id="friendPanel" style="display:none">
       <div id="mySearchName" style="font-size:12px; color:#8e8e93; background:#fff; border:1px dashed #d1d1d6; border-radius:10px; padding:6px 8px; margin-bottom:8px;"></div>
       <h3>フレンド</h3><div id="fList"><div class="empty">まだフレンドがいません</div></div>
       <h3>届いた申請</h3><div id="rList"></div>
+      <h3>送った申請</h3><div id="sentList"></div>
       <h3>グループ</h3><div id="groupList"><div class="empty">まだグループがありません</div></div>
       <button class="mini-btn" style="margin-top:4px" onclick="toggleGroupForm()">＋ グループを作る</button>
       <div id="groupForm" style="display:none; margin-top:6px;">
@@ -84,6 +85,7 @@
   <!-- チャット画面 -->
   <div class="screen" id="chatScreen">
     <div class="chat-header">
+      <button onclick="exitChat()" style="border:1px solid #d1d1d6; background:#fff; border-radius:12px; padding:5px 10px; font-size:12px; cursor:pointer;">← 退出</button>
       <span class="room-name" id="roomLabel"></span>
       <span class="conn" id="connLabel">接続中…</span>
     </div>
@@ -155,6 +157,7 @@ onAuthStateChanged(auth, async user => {
     onValue(ref(db,'friends/'+user.uid), s => renderFriends(s.val()));
     onValue(ref(db,'friendReqs/'+user.uid), s => renderReqs(s.val()));
     onValue(ref(db,'userGroups/'+user.uid), s => renderGroups(s.val()));
+    onValue(ref(db,'sentReqs/'+user.uid), s => renderSent(s.val()));
   } else {
     currentUid = null;
     box.innerHTML = '<button onclick="login()">🔑 Googleでログイン</button>';
@@ -193,9 +196,29 @@ window.searchUsers = async function(){
     `<button class="mini-btn" onclick="sendReq('${uid}','${escJs(u.name)}')">申請</button></div>`
   ).join('') : '<div class="empty">見つかりませんでした</div>';
 };
+window.exitChat = function(){
+  if (confirm('トークから退出しますか?')) location.reload();
+};
+function renderSent(val){
+  const el = document.getElementById('sentList');
+  if (!val) { el.innerHTML = '<div class="empty">送った申請はありません</div>'; return; }
+  el.innerHTML = Object.entries(val).map(([uid,r]) =>
+    `<div class="friend-item"><span class="fname">${esc(r.name)} に申請中…</span>` +
+    `<button class="mini-btn gray" onclick="cancelReq('${uid}')">取消</button></div>`
+  ).join('');
+}
 window.sendReq = async function(uid, name){
-  await set(ref(db,'friendReqs/'+uid+'/'+currentUid), { name: auth.currentUser.displayName, ts: serverTimestamp() });
-  alert(name + ' さんにフレンド申請を送りました!');
+  try {
+    await set(ref(db,'friendReqs/'+uid+'/'+currentUid), { name: auth.currentUser.displayName, ts: serverTimestamp() });
+    await set(ref(db,'sentReqs/'+currentUid+'/'+uid), { name, ts: serverTimestamp() });
+    alert(name + ' さんにフレンド申請を送りました!\n\n※相手の画面にも Ctrl+F5 をしてもらい、「届いた申請」に出るか確認してね');
+  } catch(e) {
+    alert('送信に失敗しました: ' + (e.code || e.message));
+  }
+};
+window.cancelReq = async function(uid){
+  await remove(ref(db,'sentReqs/'+currentUid+'/'+uid));
+  await remove(ref(db,'friendReqs/'+uid+'/'+currentUid));
 };
 window.acceptReq = async function(fromUid, name){
   const room = 'f_' + [currentUid, fromUid].sort().join('_');
