@@ -60,8 +60,9 @@
   <div class="screen active" id="joinScreen">
     <div id="authBox"><button onclick="login()">🔑 Googleでログイン</button></div>
     <h1>💬 なおチャット</h1>
-    <p>おなじ<b>ルーム名(合言葉)</b>を入れれば、<br>どの端末でも同じトークに参加できます<br><span style="font-size:11px">※ログインするとフレンド機能が使えます (v6)</span></p>
+    <p>おなじ<b>ルーム名(合言葉)</b>を入れれば、<br>どの端末でも同じトークに参加できます<br><span style="font-size:11px">※ログインするとフレンド機能が使えます (v7)</span></p>
     <div id="friendPanel" style="display:none">
+      <div id="mySearchName" style="font-size:12px; color:#8e8e93; background:#fff; border:1px dashed #d1d1d6; border-radius:10px; padding:6px 8px; margin-bottom:8px;"></div>
       <h3>フレンド</h3><div id="fList"><div class="empty">まだフレンドがいません</div></div>
       <h3>届いた申請</h3><div id="rList"></div>
       <h3>グループ</h3><div id="groupList"><div class="empty">まだグループがありません</div></div>
@@ -147,6 +148,8 @@ onAuthStateChanged(auth, async user => {
       });
     } catch(e){}
     box.innerHTML = '👤 ' + esc(user.displayName||'') + ' <button onclick="logout()">ログアウト</button>';
+    document.getElementById('mySearchName').innerHTML = '📛 あなたの検索名: <b>' + esc(user.displayName||'') +
+      '</b><br><span style="font-size:11px">※ 友だちは下の「友だちを名前で探す」にこの名前を入れるとあなたを見つけられます</span>';
     document.getElementById('friendPanel').style.display = 'block';
     document.getElementById('userName').value = user.displayName || '';
     onValue(ref(db,'friends/'+user.uid), s => renderFriends(s.val()));
