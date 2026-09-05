@@ -12,13 +12,29 @@
   .screen { flex:1; display:none; flex-direction:column; }
   .screen.active { display:flex; }
   /* 参加画面 */
-  #joinScreen { justify-content:center; align-items:center; gap:14px; padding:30px; }
+  #joinScreen { justify-content:center; align-items:center; gap:12px; padding:30px; position:relative; overflow-y:auto; }
   #joinScreen h1 { font-size:26px; } #joinScreen p { color:#8e8e93; font-size:13px; text-align:center; line-height:1.7; }
-  #joinScreen input { width:100%; padding:14px 16px; border:1px solid #d1d1d6; border-radius:14px; font-size:16px; outline:none; }
-  #joinScreen input:focus { border-color:#0b93f6; }
-  #joinScreen button { width:100%; padding:14px; border:none; background:#0b93f6; color:#fff; border-radius:14px;
-                       font-size:16px; font-weight:700; cursor:pointer; }
-  #joinScreen button:hover { background:#0a84e8; }
+  #joinScreen > input, #joinScreen > button.join-btn { width:100%; }
+  #joinScreen input:not([type=text]) {}
+  .name-input { width:100%; padding:14px 16px; border:1px solid #d1d1d6; border-radius:14px; font-size:16px; outline:none; }
+  .name-input:focus { border-color:#0b93f6; }
+  .join-btn { padding:14px; border:none; background:#0b93f6; color:#fff; border-radius:14px; font-size:16px; font-weight:700; cursor:pointer; }
+  .join-btn:hover { background:#0a84e8; }
+  /* 左上のログイン */
+  #authBox { position:absolute; top:12px; left:12px; font-size:12px; color:#8e8e93; }
+  #authBox button { padding:6px 12px; font-size:12px; border-radius:12px; border:1px solid #d1d1d6; background:#fff; cursor:pointer; margin-left:6px; }
+  /* フレンドパネル */
+  #friendPanel { width:100%; background:#f7f7f9; border:1px solid #e5e5ea; border-radius:14px; padding:12px; text-align:left; font-size:13px; max-height:38vh; overflow-y:auto; }
+  #friendPanel h3 { font-size:12px; margin:8px 0 4px; color:#8e8e93; font-weight:600; }
+  #friendPanel h3:first-child { margin-top:0; }
+  .friend-item { display:flex; align-items:center; gap:8px; padding:5px 2px; }
+  .friend-item .fname { flex:1; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .mini-btn { padding:4px 10px; font-size:12px; border:none; border-radius:10px; background:#0b93f6; color:#fff; cursor:pointer; flex-shrink:0; }
+  .mini-btn.green { background:#30d158; }
+  .mini-btn.gray { background:#c7c7cc; }
+  #searchRow { display:flex; gap:6px; margin-top:4px; }
+  #searchRow input { flex:1; padding:8px 10px; border:1px solid #d1d1d6; border-radius:10px; font-size:13px; outline:none; }
+  .empty { color:#8e8e93; font-size:12px; padding:2px; }
   /* チャット画面 */
   .chat-header { padding:14px 16px; border-bottom:1px solid #e5e5ea; display:flex; align-items:center; gap:10px; }
   .room-name { font-weight:700; font-size:16px; flex:1; }
@@ -35,7 +51,6 @@
   .input-area { display:flex; gap:10px; padding:12px; border-top:1px solid #e5e5ea; }
   .input-area input { flex:1; padding:12px 16px; border:1px solid #d1d1d6; border-radius:20px; font-size:15px; outline:none; }
   .input-area button { border:none; background:#0b93f6; color:#fff; border-radius:20px; padding:0 20px; font-weight:600; cursor:pointer; }
-  .sys { text-align:center; font-size:12px; color:#8e8e93; margin:6px 0; }
   @media (max-width:560px){ .app { border-radius:0; height:100vh; max-width:100%; } }
 </style>
 </head>
@@ -43,11 +58,19 @@
 <div class="app">
   <!-- 参加画面 -->
   <div class="screen active" id="joinScreen">
+    <div id="authBox"><button onclick="login()">🔑 Googleでログイン</button></div>
     <h1>💬 ふわっとチャット</h1>
-    <p>おなじ<b>ルーム名(合言葉)</b>を入れれば、<br>どの端末でも同じトークに参加できます</p>
-    <input id="userName" placeholder="あなたの名前(例: さくら)" maxlength="12">
-    <input id="roomCode" placeholder="ルーム名(例: きのうのパーティー)" maxlength="30">
-    <button onclick="join()">チャットに参加 →</button>
+    <p>おなじ<b>ルーム名(合言葉)</b>を入れれば、<br>どの端末でも同じトークに参加できます<br><span style="font-size:11px">※ログインするとフレンド機能が使えます</span></p>
+    <div id="friendPanel" style="display:none">
+      <h3>フレンド</h3><div id="fList"><div class="empty">まだフレンドがいません</div></div>
+      <h3>届いた申請</h3><div id="rList"></div>
+      <h3>友だちを名前で探す</h3>
+      <div id="searchRow"><input id="searchName" placeholder="アカウント名(例: naoto)" onkeydown="if(event.key==='Enter')searchUsers()"><button class="mini-btn" onclick="searchUsers()">検索</button></div>
+      <div id="searchResult"></div>
+    </div>
+    <input class="name-input" id="userName" placeholder="あなたの名前(例: さくら)" maxlength="12">
+    <input class="name-input" id="roomCode" placeholder="ルーム名(例: きのうのパーティー)" maxlength="30">
+    <button class="join-btn" onclick="join()">チャットに参加 →</button>
   </div>
   <!-- チャット画面 -->
   <div class="screen" id="chatScreen">
@@ -64,11 +87,6 @@
 </div>
 
 <script type="module">
-// ============================================================
-// 【ここを書き換えてね】Firebaseの設定を自分のものに差し替える
-// Firebaseコンソール → プロジェクト設定 → 「ウェブアプリ」→
-// 「Firebase SDK の設定」に書いてある内容をコピー&ペースト
-// ============================================================
 const firebaseConfig = {
   apiKey: "AIzaSyDCkJxFOV1xPASeRkMUKSlRUbVR0EMdtg4",
   authDomain: "team-49-739c8.firebaseapp.com",
@@ -80,18 +98,101 @@ const firebaseConfig = {
 };
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-import { getDatabase, ref, push, onValue, set, get, onDisconnect, serverTimestamp }
+import { getDatabase, ref, push, onValue, set, get, onDisconnect, serverTimestamp, remove, query, orderByChild, equalTo }
   from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+import { getAuth, GoogleAuthProvider, signInWithRedirect, getRedirectResult, onAuthStateChanged, signOut }
+  from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 
 const app = initializeApp(firebaseConfig);
 const db  = getDatabase(app);
+const auth = getAuth(app);
+const provider = new GoogleAuthProvider();
 
-let userName = "", roomId = "", lastKey = "";
+let userName = "", roomId = "", lastKey = "", currentUid = null;
 const COLORS = ['#ff9500','#30d158','#af52de','#ff2d55','#5ac8fa','#ffcc00','#007aff'];
 const colorOf = name => COLORS[[...name].reduce((a,c)=>a+c.charCodeAt(0),0) % COLORS.length];
 const esc = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+const escJs = s => s.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
 const fmt = t => { const d = new Date(t); return d.getHours()+':'+String(d.getMinutes()).padStart(2,'0'); };
 
+/* ===== ログイン / ゲスト ===== */
+window.login = () => { signInWithRedirect(auth, provider); };
+window.logout = () => { signOut(auth); };
+getRedirectResult(auth).catch(()=>{});
+
+onAuthStateChanged(auth, async user => {
+  const box = document.getElementById('authBox');
+  if (user) {
+    currentUid = user.uid;
+    try {
+      await set(ref(db,'users/'+user.uid), {
+        name: user.displayName || 'ななし',
+        lowerName: (user.displayName || '').toLowerCase()
+      });
+    } catch(e){}
+    box.innerHTML = '👤 ' + esc(user.displayName||'') + ' <button onclick="logout()">ログアウト</button>';
+    document.getElementById('friendPanel').style.display = 'block';
+    document.getElementById('userName').value = user.displayName || '';
+    onValue(ref(db,'friends/'+user.uid), s => renderFriends(s.val()));
+    onValue(ref(db,'friendReqs/'+user.uid), s => renderReqs(s.val()));
+  } else {
+    currentUid = null;
+    box.innerHTML = '<button onclick="login()">🔑 Googleでログイン</button>';
+    document.getElementById('friendPanel').style.display = 'none';
+  }
+});
+
+/* ===== フレンド機能 ===== */
+function renderFriends(val){
+  const el = document.getElementById('fList');
+  if (!val) { el.innerHTML = '<div class="empty">まだフレンドがいません</div>'; return; }
+  el.innerHTML = Object.entries(val).map(([uid,f]) =>
+    `<div class="friend-item"><span class="fname">😊 ${esc(f.name)}</span>` +
+    `<button class="mini-btn" onclick="talkFriend('${escJs(f.room)}','${escJs(f.name)}')">トーク</button></div>`
+  ).join('');
+}
+function renderReqs(val){
+  const el = document.getElementById('rList');
+  if (!val) { el.innerHTML = ''; return; }
+  el.innerHTML = Object.entries(val).map(([uid,r]) =>
+    `<div class="friend-item"><span class="fname">${esc(r.name)} から申請</span>` +
+    `<button class="mini-btn green" onclick="acceptReq('${uid}','${escJs(r.name)}')">承認</button>` +
+    `<button class="mini-btn gray" onclick="declineReq('${uid}')">却下</button></div>`
+  ).join('');
+}
+window.searchUsers = async function(){
+  const q = document.getElementById('searchName').value.trim().toLowerCase();
+  const box = document.getElementById('searchResult');
+  if (!q) { box.innerHTML=''; return; }
+  const s = await get(query(ref(db,'users'), orderByChild('lowerName'), equalTo(q)));
+  const val = s.val();
+  const items = val ? Object.entries(val).filter(([uid]) => uid !== currentUid) : [];
+  box.innerHTML = items.length ? items.map(([uid,u]) =>
+    `<div class="friend-item"><span class="fname">${esc(u.name)}</span>` +
+    `<button class="mini-btn" onclick="sendReq('${uid}','${escJs(u.name)}')">申請</button></div>`
+  ).join('') : '<div class="empty">見つかりませんでした</div>';
+};
+window.sendReq = async function(uid, name){
+  await set(ref(db,'friendReqs/'+uid+'/'+currentUid), { name: auth.currentUser.displayName, ts: serverTimestamp() });
+  alert(name + ' さんにフレンド申請を送りました!');
+};
+window.acceptReq = async function(fromUid, name){
+  const room = 'f_' + [currentUid, fromUid].sort().join('_');
+  const myName = auth.currentUser.displayName || 'ななし';
+  await set(ref(db,'friends/'+currentUid+'/'+fromUid), { name, room });
+  await set(ref(db,'friends/'+fromUid+'/'+currentUid), { name: myName, room });
+  await remove(ref(db,'friendReqs/'+currentUid+'/'+fromUid));
+};
+window.declineReq = async function(fromUid){
+  await remove(ref(db,'friendReqs/'+currentUid+'/'+fromUid));
+};
+window.talkFriend = function(room, fname){
+  document.getElementById('roomCode').value = room;
+  document.getElementById('userName').value = auth.currentUser.displayName || '';
+  join();
+};
+
+/* ===== チャット ===== */
 window.join = async function(){
   userName = document.getElementById('userName').value.trim();
   roomId   = document.getElementById('roomCode').value.trim();
@@ -112,7 +213,7 @@ window.join = async function(){
     await set(myRef, true);
     onDisconnect(myRef).remove();
   } catch (e) {
-    document.getElementById('connLabel').textContent = '⚠ 接続エラー(Real-time Databaseのルールを確認してね)';
+    document.getElementById('connLabel').textContent = '⚠ 接続エラー(Realtime Databaseのルールを確認してね)';
     document.getElementById('connLabel').style.color = '#ff3b30';
     return;
   }
